@@ -7,23 +7,35 @@ import lightfieldpackage
 import os
 from shutil import copyfile
 
-colormap = 'hot'  # gray
+# Set the colormap for image visualization
+colormap = 'hot'
 
+# Import settings for parameter configurations
 import settings
 
-results_directory = r"../../results/USAF"
-input_image_path = r"../../data/usaf.png"
+# Define results directory for saving outputs
+results_directory = r"results/USAF"
+input_image_path = r"data/usaf.png"  # Path to the input image
 
+# Create results directory if it doesn't exist
 if not os.path.exists(results_directory):
     os.makedirs(results_directory)
-copyfile(os.path.basename(__file__), os.path.join(results_directory, os.path.basename(__file__)))
+
+# Save a copy of the current script and settings file in the results directory for reproducibility
+copyfile(os.path.abspath(__file__), os.path.join(results_directory, os.path.basename(__file__)))
 copyfile(settings.params_path, os.path.join(results_directory, os.path.basename(settings.params_path)))
 
+# Load the input image as a grayscale image and normalize to [0, 1]
 image = cv2.imread(input_image_path, 0).astype(np.float32) / 255.0
-plt.figure(), plt.imshow(image), plt.title("gt"), plt.colorbar()
+plt.figure(), plt.imshow(image), plt.title("Ground Truth Image"), plt.colorbar()
+
+# Resize the image to a multiple of 33 x 57 for consistency
 resized_image = cv2.resize(image, dsize=(33 * 57, 33 * 57))
 
+# Compute the scaling factor for lightfield processing
 scaling_factor = ((settings.B_ML_Sensor - settings.f_MLA) / settings.g_ML_focus) / (settings.B_ML_Sensor / settings.g_ML_focus)
+
+# Extract optical parameters from settings
 distance_micro_lens_mla = settings.B_ML_MLA * 1e-3
 diameter_main_lens = settings.D_ML * 1e-3
 focal_length_micro_lens = settings.f_ML * 1e-3
@@ -39,15 +51,18 @@ oversampling_rate = 3
 num_micro_pixels = settings.N_MP_int
 scaling_factor_per_pixel = pixel_pitch / oversampling_rate
 
-lightfield_positions = settings.plqs_pos
-object_coordinates = lightfield_positions[:, :, :, :] * 1e-3
+# Load point light source positions
+plqs_positions = settings.plqs_pos
+object_coordinates = plqs_positions[:, :, :, :] * 1e-3
 
+# Compute unique source positions
 plq_coordinates = np.array([[plq.sourceX, plq.sourceY] for plq in settings.plqs])
 x1objspace = np.unique(plq_coordinates[:, 0]) * 1e-3
 x2objspace = np.unique(plq_coordinates[:, 1]) * 1e-3
 x3objspace = g_main_lens - g_main_lens_focus
 object_space = np.ones((object_coordinates.shape[0], object_coordinates.shape[1], len(x3objspace)))
 
+# Calculate the PSF (Point Spread Function) size for the micro-lens array
 psf_size_micro_lens_mla = diameter_main_lens * np.abs(
     1 / (1 / focal_length_micro_lens - 1 / g_main_lens) - distance_micro_lens_mla) / (
                                       1 / (1 / focal_length_micro_lens - 1 / g_main_lens))
@@ -56,6 +71,8 @@ num_micro_lens_roi = int(np.ceil(np.max(num_micro_lens_rois)) // 2 * 2 + 1) if n
     np.ceil(np.max(num_micro_lens_rois)))
 
 print("N_MiL_RoI is ", num_micro_lens_roi)
+
+# Define image dimensions and spatial grids
 image_width = num_micro_lens_roi * num_micro_pixels
 image_height = num_micro_lens_roi * num_micro_pixels
 x1space = np.linspace(start=-image_width * pixel_pitch / 2 + pixel_pitch / oversampling_rate / 2,
@@ -66,11 +83,14 @@ x2space = np.linspace(start=-image_width * pixel_pitch / 2 + pixel_pitch / overs
                       num=num_micro_pixels * num_micro_lens_roi * oversampling_rate)
 assert len(x2space) == num_micro_pixels * num_micro_lens_roi * oversampling_rate
 
+# Compute magnification factors and spatial shifts
 magnification_factor = distance_micro_lens_mla / g_main_lens[0]
 shift_offset_x1_top = np.min(x1objspace) * magnification_factor
 shift_offset_x1_bottom = np.max(x1objspace) * magnification_factor
 shift_offset_x2_left = np.min(x2objspace) * magnification_factor
 shift_offset_x2_right = np.max(x2objspace) * magnification_factor
+
+# Grids for shifted coordinates
 x_space_for_shift = np.arange(start=-image_width * pixel_pitch / 2 + pixel_pitch / oversampling_rate / 2 + shift_offset_x1_top,
                               stop=image_width * pixel_pitch / 2 - pixel_pitch / oversampling_rate / 2 + shift_offset_x1_bottom + pixel_pitch / oversampling_rate,
                               step=pixel_pitch / oversampling_rate)
@@ -78,6 +98,7 @@ y_space_for_shift = np.arange(start=-image_width * pixel_pitch / 2 + pixel_pitch
                               stop=image_width * pixel_pitch / 2 - pixel_pitch / oversampling_rate / 2 + shift_offset_x2_right + pixel_pitch / oversampling_rate,
                               step=pixel_pitch / oversampling_rate)
 
+# Generate micro-lens array pattern
 x1ml_space = np.linspace(start=-num_micro_pixels * pixel_pitch / 2 + pixel_pitch / oversampling_rate / 2,
                          stop=num_micro_pixels * pixel_pitch / 2 - pixel_pitch / oversampling_rate / 2,
                          endpoint=True, num=oversampling_rate * num_micro_pixels)
@@ -88,14 +109,17 @@ x2ml_space = np.linspace(start=-num_micro_pixels * pixel_pitch / 2 + pixel_pitch
 micro_lens_array = lightfieldpackage.utils_optics.calculate_mla_pattern(focal_length_mla, wave_number, x1ml_space, x2ml_space,
                                                           num_lenses_x=num_micro_lens_roi, num_lenses_y=num_micro_lens_roi)
 
+# Extract super-resolution factor
 super_res_factor = settings.super_resolution_factor
 
+# Process lightfield for a single depth
 i_curr_obj_coords_xyz = 0
 current_object_coordinates = object_coordinates[:, :, [i_curr_obj_coords_xyz], :]
 current_object_coordinates_quarter = current_object_coordinates[
                                      :current_object_coordinates.shape[0] // 2 + 1,
                                      :current_object_coordinates.shape[1] // 2 + 1, :, :]
 
+# Generate wave propagation kernel for the current depth
 H_wave_quarter, psf_before_MLA_character = lightfieldpackage.utils_optics.generate_wave(image_height, image_width,
                                                                                           current_object_coordinates_quarter,
                                                                                           focal_length_micro_lens,
@@ -112,6 +136,7 @@ H_wave_quarter, psf_before_MLA_character = lightfieldpackage.utils_optics.genera
                                                                                           oversample_x=oversampling_rate,
                                                                                           oversample_y=oversampling_rate,
                                                                                           ml_focus_position=g_main_lens_focus)
+# Reconstruct the wave propagation kernel
 H_wave = np.zeros((image_width, image_height, super_res_factor, super_res_factor, 1))
 a = current_object_coordinates.shape[0] // 2 + 1
 b = (current_object_coordinates.shape[0] // 2 - 1) if (current_object_coordinates.shape[0] // 2 - 1) > 0 else 0
@@ -123,15 +148,18 @@ H_wave_multiple_depth = np.flip(H_wave, axis=(0, 1))
 n_depth_current = 0
 H_wave_single_depth = H_wave_multiple_depth[:, :, :, :, n_depth_current]
 
+# Define forward function for generating lightfield
 super_res_factor_wave_x = H_wave_single_depth.shape[3]
 super_res_factor_wave_y = H_wave_single_depth.shape[2]
 forward_function = lambda object_field: lightfieldpackage.utils_deconv.forward_prevedel_super_resolution(
     object_field, H_wave_single_depth, super_res_factor_x=super_res_factor_wave_x,
     super_res_factor_y=super_res_factor_wave_y, microlens_pitch_x=num_micro_pixels, microlens_pitch_y=num_micro_pixels)
 
+# Generate lightfield image
 lightfield_image = forward_function(resized_image)
 plt.figure(), plt.imshow(lightfield_image), plt.title("Lightfield Image"), plt.colorbar()
 
+# Save output images
 plt.imsave(os.path.join(results_directory, "H_wave_single_depth.png"), H_wave_single_depth[:, :, 0, 0], cmap=colormap)
 plt.imsave(os.path.join(results_directory, "lightfield_image.png"), lightfield_image, cmap=colormap)
 plt.imsave(os.path.join(results_directory, "lightfield_image_gray.png"), lightfield_image, cmap="gray")
