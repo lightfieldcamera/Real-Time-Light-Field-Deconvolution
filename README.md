@@ -56,6 +56,22 @@ Example to back projection with pixel Selection:
 python examples/LF_Direct_Deconvolution_w_back_projection_w_Pixel_Selection/reconst_USAF_with_backprojection_and_H_wave_with_indices.py
 ```
 
+## Using with own dataset
+Change the settings.py file in each example folder with your camera parameters.
+Change "*.npy" in the following code in each file to png, jpg or tif. Use cv2, PIL or tifffile to load the image and convert it to numpy array.
+```python
+# Directory containing input lightfield data
+input_directory = r"data/usaf_lf"
+# Get sorted list of all input irradiance files
+input_file_paths = sorted(glob.glob(os.path.join(input_directory, "irradiance_*.npy")))
+
+# Load lightfield data into an array
+lightfield_array = []
+for file_path in input_file_paths:
+    image = np.load(file_path)  # Load the irradiance image
+    lightfield_array.append(image)
+lightfield_array = np.array(lightfield_array)  # Convert to NumPy array
+```
 ## Citation
 
 If you use this code or dataset in your research, please cite our paper:
