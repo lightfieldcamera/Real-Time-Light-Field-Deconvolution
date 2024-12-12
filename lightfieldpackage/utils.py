@@ -1,33 +1,78 @@
 import lightfieldpackage
 import numpy as np
 import cv2
+
 class LightfieldProcessor:
+    """
+    Class for processing lightfield data, including refocusing, shearing, and preparing lightfield images.
+    """
     def __init__(self, is_1D):
+        """
+        Initialize the processor for either 1D or 2D lightfield data.
+
+        :param is_1D: Boolean flag indicating if the input data is 1D.
+        """
         super(LightfieldProcessor, self).__init__()
+        # Select appropriate functions based on input dimensionality
         self.raw_to_lf = lightfieldpackage.utils.convert_raw_to_epi if is_1D else lightfieldpackage.utils.convert_raw_to_lightfield
         self.prepare_lf = self.prepare_lightfield_1D if is_1D else self.prepare_lightfield_2D
         self.refocus = self.refocus_1D if is_1D else self.refocus_2D
         self.shear = self.shear_1D if is_1D else self.shear_2D
 
     def prepare_lightfield_2D(self, lightfield_data, downsample_factor, num_s, num_t, num_u, num_v, interp_method=cv2.INTER_LINEAR):
+        """
+        Prepare a 2D lightfield for further processing by interpolating and normalizing.
+
+        :param lightfield_data: Input lightfield data.
+        :param downsample_factor: Downsampling factor for interpolation.
+        :param num_s: Number of s-axis microlenses.
+        :param num_t: Number of t-axis microlenses.
+        :param num_u: Number of u-axis pixels per microlens.
+        :param num_v: Number of v-axis pixels per microlens.
+        :param interp_method: Interpolation method (default is linear).
+        :return: Normalized interpolated lightfield.
+        """
         reshaped_data = lightfield_data.reshape((-1, *lightfield_data.shape[-2:]))
         interpolated_data = np.array(
             [cv2.resize(sub, (downsample_factor * num_s, downsample_factor * num_t), interpolation=interp_method)
              for sub in reshaped_data]
         )
         reshaped_interpolated = interpolated_data.reshape((num_u, num_v, *interpolated_data.shape[-2:]))
-
-        # Energieerhaltung vor und nach Interpolation
+        # Energy conservation during interpolation
         normalized_data = reshaped_interpolated * np.sum(lightfield_data) / np.sum(reshaped_interpolated)
         return normalized_data
 
     def prepare_lightfield_1D(self, lightfield_data, downsample_factor, num_s, num_u, interp_method=cv2.INTER_LINEAR):
+        """
+        Prepare a 1D lightfield by interpolating and normalizing.
+
+        :param lightfield_data: Input lightfield data.
+        :param downsample_factor: Downsampling factor for interpolation.
+        :param num_s: Number of s-axis microlenses.
+        :param num_u: Number of u-axis pixels per microlens.
+        :param interp_method: Interpolation method (default is linear).
+        :return: Normalized interpolated lightfield.
+        """
         interpolated_data = cv2.resize(lightfield_data, (downsample_factor * num_s, num_u), interpolation=interp_method)
-        # Energieerhaltung vor und nach Interpolation
+        # Energy conservation during interpolation
         normalized_data = interpolated_data * np.sum(lightfield_data) / np.sum(interpolated_data)
         return normalized_data
 
     def refocus_1D(self, interpolated_lightfield, focus_factor, num_pixels_per_microlens, num_microlenses, downsample_factor, lenslet_pitch, mainlens_pitch, apply_scaling=True, interpolation_method="linear"):
+        """
+        Perform 1D refocusing on the lightfield.
+
+        :param interpolated_lightfield: Input interpolated lightfield.
+        :param focus_factor: Refocusing parameter (alpha).
+        :param num_pixels_per_microlens: Number of pixels per microlens.
+        :param num_microlenses: Total number of microlenses.
+        :param downsample_factor: Downsampling factor.
+        :param lenslet_pitch: Microlens pitch.
+        :param mainlens_pitch: Main lens pitch.
+        :param apply_scaling: Boolean indicating if scaling should be applied.
+        :param interpolation_method: Interpolation method (default is linear).
+        :return: Refocused lightfield.
+        """
         refocused = lightfieldpackage.utils.refocus_1D_lightfield(
             epipolar_image=interpolated_lightfield,
             focus_factor=focus_factor,
@@ -47,7 +92,24 @@ class LightfieldProcessor:
         )[0]
         return refocused
 
-    def refocus_2D(self, interpolated_lightfield, focus_factor, coord_u, coord_v, coord_s, coord_t, downsample_factor, lenslet_pitch, mainlens_pitch, apply_scaling=True, interpolation_method="linear"):
+    def refocus_2D(self, interpolated_lightfield, focus_factor, coord_u, coord_v, coord_s, coord_t, downsample_factor,
+                   lenslet_pitch, mainlens_pitch, apply_scaling=True, interpolation_method="linear"):
+        """
+        Perform 2D refocusing on the lightfield.
+
+        :param interpolated_lightfield: Input interpolated lightfield.
+        :param focus_factor: Refocusing parameter (alpha).
+        :param coord_u: Number of u-axis pixels per microlens.
+        :param coord_v: Number of v-axis pixels per microlens.
+        :param coord_s: Number of s-axis microlenses.
+        :param coord_t: Number of t-axis microlenses.
+        :param downsample_factor: Downsampling factor.
+        :param lenslet_pitch: Microlens pitch.
+        :param mainlens_pitch: Main lens pitch.
+        :param apply_scaling: Boolean indicating if scaling should be applied.
+        :param interpolation_method: Interpolation method (default is linear).
+        :return: Refocused lightfield.
+        """
         refocused = lightfieldpackage.utils.refocus_lightfield_2D(
             lightfield=interpolated_lightfield,
             focus_factor=focus_factor,
@@ -68,6 +130,20 @@ class LightfieldProcessor:
         return refocused
 
     def shear_1D(self, interpolated_lightfield, focus_factor, num_pixels_per_microlens, num_microlenses, downsample_factor, lenslet_pitch, mainlens_pitch, apply_scaling=True, interpolation_method="linear"):
+        """
+        Perform 1D shearing on the lightfield.
+
+        :param interpolated_lightfield: Input interpolated lightfield.
+        :param focus_factor: Shearing parameter (alpha).
+        :param num_pixels_per_microlens: Number of pixels per microlens.
+        :param num_microlenses: Total number of microlenses.
+        :param downsample_factor: Downsampling factor.
+        :param lenslet_pitch: Microlens pitch.
+        :param mainlens_pitch: Main lens pitch.
+        :param apply_scaling: Boolean indicating if scaling should be applied.
+        :param interpolation_method: Interpolation method (default is linear).
+        :return: Sheared lightfield data.
+        """
         sheared_data = lightfieldpackage.utils.shear_epipolar_image(
             epipolar_image=interpolated_lightfield,
             focus_factor=focus_factor,
@@ -85,6 +161,20 @@ class LightfieldProcessor:
         return sheared_data
 
     def shear_2D(self, interpolated_lightfield, focus_factor, num_pixels_per_microlens, num_microlenses, downsample_factor, lenslet_pitch, mainlens_pitch, apply_scaling=True, interpolation_method="linear"):
+        """
+        Perform 2D shearing on the lightfield.
+
+        :param interpolated_lightfield: Input interpolated lightfield.
+        :param focus_factor: Shearing parameter (alpha).
+        :param num_pixels_per_microlens: Number of pixels per microlens.
+        :param num_microlenses: Total number of microlenses.
+        :param downsample_factor: Downsampling factor.
+        :param lenslet_pitch: Microlens pitch.
+        :param mainlens_pitch: Main lens pitch.
+        :param apply_scaling: Boolean indicating if scaling should be applied.
+        :param interpolation_method: Interpolation method (default is linear).
+        :return: Sheared lightfield data.
+        """
         sheared_data = lightfieldpackage.utils.shear_lightfield(
             lightfield=interpolated_lightfield,
             focus_factor=focus_factor,
@@ -104,25 +194,27 @@ class LightfieldProcessor:
 
 def shear_epipolar_image(epipolar_image, focus_factor, coord_u, coord_v, coord_s, coord_t, pitch_t, pitch_s, pitch_v,
                          pitch_u, apply_scaling=True, interpolation_method="linear", scaling_factor=1):
-    '''
-    :param epipolar_image: Eingabe-Epipolarbild mit Dimensionen (u, s)
-    :param focus_factor: Scherungsfaktor (Alpha)
-    :param coord_u: Koordinaten entlang der u-Achse
-    :param coord_v: Koordinaten entlang der v-Achse
-    :param coord_s: Koordinaten entlang der s-Achse
-    :param coord_t: Koordinaten entlang der t-Achse
-    :param pitch_t: Mikroobjektivabstand entlang der t-Achse
-    :param pitch_s: Mikroobjektivabstand entlang der s-Achse
-    :param pitch_v: Mikrobildschrittweite entlang der v-Achse
-    :param pitch_u: Mikrobildschrittweite entlang der u-Achse
-    :param apply_scaling: Ob Skalierung angewandt wird (Standard: True)
-    :param interpolation_method: Methode der Interpolation (Standard: "linear")
-    :param scaling_factor: Skalierungsfaktor (Standard: 1)
-    :return: Gescherte Epipolarbilddaten und Normalisierungsfaktor
-    '''
+    """
+    Shear an epipolar image based on the specified parameters.
+
+    :param epipolar_image: Input epipolar image with dimensions (u, s).
+    :param focus_factor: Shearing factor (Alpha).
+    :param coord_u: Coordinates along the u-axis.
+    :param coord_v: Coordinates along the v-axis.
+    :param coord_s: Coordinates along the s-axis.
+    :param coord_t: Coordinates along the t-axis.
+    :param pitch_t: Microlens spacing along the t-axis.
+    :param pitch_s: Microlens spacing along the s-axis.
+    :param pitch_v: Microlens step size along the v-axis.
+    :param pitch_u: Microlens step size along the u-axis.
+    :param apply_scaling: Boolean indicating if scaling should be applied (default is True).
+    :param interpolation_method: Interpolation method (default is "linear").
+    :param scaling_factor: Scaling factor (default is 1).
+    :return: Sheared epipolar image data and normalization factor.
+    """
     normalization_factor_epi = coord_u
 
-    # Skalierungsfaktoren berechnen:
+    # Compute scaling factors
     scale_factor_s = np.float32(pitch_s * scaling_factor)
     scale_factor_u = np.float32(pitch_u)
     oversampling = 1
@@ -152,30 +244,32 @@ def shear_epipolar_image(epipolar_image, focus_factor, coord_u, coord_v, coord_s
 
 
 def refocus_1D_lightfield(epipolar_image, focus_factor, coord_u, coord_v, coord_s, coord_t, pitch_t, pitch_s, pitch_v, pitch_u, domain, focal_distance, z1, apply_scaling=True, interpolation_method="linear"):
-    '''
-    :param epipolar_image: Epipolarbild, z. B. np.flipud(np.reshape(slice, (-1, N_MP)).transpose())
-    :param focus_factor: Refokussierungsparameter (Alpha)
-    :param coord_u: Koordinaten entlang der u-Achse
-    :param coord_v: Koordinaten entlang der v-Achse
-    :param coord_s: Koordinaten entlang der s-Achse
-    :param coord_t: Koordinaten entlang der t-Achse
-    :param pitch_t: Mikroobjektivabstand entlang der t-Achse
-    :param pitch_s: Mikroobjektivabstand entlang der s-Achse
-    :param pitch_v: Mikrobildschrittweite entlang der v-Achse
-    :param pitch_u: Mikrobildschrittweite entlang der u-Achse
-    :param domain: Domain (z. B. Raum oder Frequenzraum)
-    :param focal_distance: Fokusabstand
-    :param z1: Abstand zur Bildaufnahmeebene
-    :param apply_scaling: Ob Skalierung angewandt wird (Standard: True)
-    :param interpolation_method: Methode der Interpolation (Standard: "linear")
-    :return: Refokussiertes Projektionsergebnis, gescherte Epipolarbilddaten, Eingabe-Epipolarbild und unfokussierte Projektionen
-    '''
+    """
+    Refocus a 1D lightfield based on the given parameters.
+
+    :param epipolar_image: Epipolar image input.
+    :param focus_factor: Refocusing parameter (Alpha).
+    :param coord_u: Coordinates along the u-axis.
+    :param coord_v: Coordinates along the v-axis.
+    :param coord_s: Coordinates along the s-axis.
+    :param coord_t: Coordinates along the t-axis.
+    :param pitch_t: Microlens spacing along the t-axis.
+    :param pitch_s: Microlens spacing along the s-axis.
+    :param pitch_v: Microlens step size along the v-axis.
+    :param pitch_u: Microlens step size along the u-axis.
+    :param domain: Domain (e.g., image or frequency space).
+    :param focal_distance: Focal distance (optional).
+    :param z1: Distance to image acquisition plane (optional).
+    :param apply_scaling: Boolean indicating if scaling should be applied (default is True).
+    :param interpolation_method: Interpolation method (default is "linear").
+    :return: Refocused projection, sheared epipolar data, input epipolar image, and unfocused projections.
+    """
     sheared_epipolar_data, normalization_factors_epi = shear_epipolar_image(
         epipolar_image, focus_factor, coord_u, coord_v, coord_s, coord_t,
         pitch_t, pitch_s, pitch_v, pitch_u,
         apply_scaling=apply_scaling, interpolation_method=interpolation_method
     )
-    # Integration:
+    # Integration
     refocused_projection = np.sum(sheared_epipolar_data, axis=(0))
     refocused_projection /= normalization_factors_epi
 
@@ -187,23 +281,24 @@ def refocus_1D_lightfield(epipolar_image, focus_factor, coord_u, coord_v, coord_
 
 def shear_lightfield(lightfield, focus_factor, coord_s, coord_t, coord_u, coord_v, pitch_t, pitch_s, pitch_v, pitch_u,
                      apply_scaling=True, interpolation_method="linear", scaling_factor=1):
-    '''
-    :param lightfield: Eingabe-Lightfield (N_MP, N_MP, N_MLA, N_MLA)
-    :param focus_factor: Alpha-Wert für die Scherung
-    :param coord_s: Anzahl der Mikrolinsen entlang der s-Achse (N_MLA)
-    :param coord_t: Anzahl der Mikrolinsen entlang der t-Achse (N_MLA)
-    :param coord_u: Anzahl der Mikrobildpixel entlang der u-Achse (N_MP)
-    :param coord_v: Anzahl der Mikrobildpixel entlang der v-Achse (N_MP)
-    :param pitch_t: Mikroobjektivabstand entlang der t-Achse
-    :param pitch_s: Mikroobjektivabstand entlang der s-Achse
-    :param pitch_v: Mikrobildschrittweite entlang der v-Achse
-    :param pitch_u: Mikrobildschrittweite entlang der u-Achse
-    :param apply_scaling: Ob Skalierung angewandt wird (Standard: True)
-    :param interpolation_method: Methode der Interpolation (Standard: "linear")
-    :param scaling_factor: Skalierungsfaktor (Standard: 1)
-    :return: Gescherte Lightfield-Daten und Normalisierungsfaktor
-    credits to plenoptomos
-    '''
+    """
+    Shears a lightfield image based on the given parameters.
+
+    :param lightfield: Input lightfield data (N_MP, N_MP, N_MLA, N_MLA).
+    :param focus_factor: Shearing parameter (Alpha).
+    :param coord_s: Number of microlenses along the s-axis (N_MLA).
+    :param coord_t: Number of microlenses along the t-axis (N_MLA).
+    :param coord_u: Number of microlens pixels along the u-axis (N_MP).
+    :param coord_v: Number of microlens pixels along the v-axis (N_MP).
+    :param pitch_t: Microlens spacing along the t-axis.
+    :param pitch_s: Microlens spacing along the s-axis.
+    :param pitch_v: Microlens step size along the v-axis.
+    :param pitch_u: Microlens step size along the u-axis.
+    :param apply_scaling: Whether to apply scaling (default: True).
+    :param interpolation_method: Interpolation method (default: "linear").
+    :param scaling_factor: Scaling factor (default: 1).
+    :return: Sheared lightfield data and normalization factor.
+    """
     lightfield_image = lightfield
     lenslet_dimensions = np.array([coord_v, coord_u], dtype=np.int32)
 
@@ -244,30 +339,33 @@ def shear_lightfield(lightfield, focus_factor, coord_s, coord_t, coord_u, coord_
     return sheared_lightfield_data, normalization_factor
 
 
-def refocus_lightfield_2D(lightfield, focus_factor, u_coord, v_coord, s_coord, t_coord, pitch_t, pitch_s, pitch_v, pitch_u, domain, focal_distance, z1, apply_scaling=True, interpolation_method="linear"):
-    '''
-    :param lightfield: Dimensionen sind u,v,s,t oder v,u,t,s
-    :param focus_factor: Refokussierungsparameter
-    :param u_coord: Koordinaten entlang der u-Achse
-    :param v_coord: Koordinaten entlang der v-Achse
-    :param s_coord: Koordinaten entlang der s-Achse
-    :param t_coord: Koordinaten entlang der t-Achse
-    :param pitch_t: Mikroobjektivabstand entlang der t-Achse
-    :param pitch_s: Mikroobjektivabstand entlang der s-Achse
-    :param pitch_v: Mikrobildschrittweite entlang der v-Achse
-    :param pitch_u: Mikrobildschrittweite entlang der u-Achse
-    :param domain: Domain (Raum, in dem die Operationen durchgeführt werden)
-    :param focal_distance: Fokusabstand
-    :param z1: Abstand zur Bildaufnahmeebene
-    :param apply_scaling: Ob Skalierung angewandt wird (Standard: True)
-    :param interpolation_method: Interpolationsmethode (Standard: "linear")
-    :return: Refokussiertes Projektionsergebnis und unfokussierte Projektionen
-    '''
+def refocus_lightfield_2D(lightfield, focus_factor, u_coord, v_coord, s_coord, t_coord, pitch_t, pitch_s, pitch_v, pitch_u,
+                          domain, focal_distance, z1, apply_scaling=True, interpolation_method="linear"):
+    """
+    Refocuses a 2D lightfield.
+
+    :param lightfield: Input lightfield with dimensions (u,v,s,t) or (v,u,t,s).
+    :param focus_factor: Refocusing parameter.
+    :param u_coord: Coordinates along the u-axis.
+    :param v_coord: Coordinates along the v-axis.
+    :param s_coord: Coordinates along the s-axis.
+    :param t_coord: Coordinates along the t-axis.
+    :param pitch_t: Microlens spacing along the t-axis.
+    :param pitch_s: Microlens spacing along the s-axis.
+    :param pitch_v: Microlens step size along the v-axis.
+    :param pitch_u: Microlens step size along the u-axis.
+    :param domain: Domain in which operations are performed.
+    :param focal_distance: Focal distance (optional).
+    :param z1: Distance to image acquisition plane (optional).
+    :param apply_scaling: Whether to apply scaling (default: True).
+    :param interpolation_method: Interpolation method (default: "linear").
+    :return: Refocused projection and unfocused projections.
+    """
     sheared_lightfield, normalization_factors = shear_lightfield(
         lightfield, focus_factor, s_coord, t_coord, u_coord, v_coord,
         pitch_t, pitch_s, pitch_v, pitch_u, apply_scaling, interpolation_method, scaling_factor=1
     )
-    # Integration:
+    # Integration
     refocused_result = np.sum(sheared_lightfield, axis=(0, 1))
     refocused_result /= normalization_factors
 
@@ -276,12 +374,27 @@ def refocus_lightfield_2D(lightfield, focus_factor, u_coord, v_coord, s_coord, t
 
     return refocused_result, unfocused_results
 
+
 def convert_raw_to_epi(raw_input, microlens_pitch):
+    """
+    Converts raw input data to an epipolar image.
+
+    :param raw_input: Raw input data.
+    :param microlens_pitch: Microlens pitch.
+    :return: Epipolar image.
+    """
     epipolar_image = np.reshape(raw_input, (microlens_pitch, -1), order='F')
     return epipolar_image
 
 
 def convert_raw_to_lightfield(raw_input, microlens_pitch):
+    """
+    Converts raw input data to a lightfield representation.
+
+    :param raw_input: Raw input data.
+    :param microlens_pitch: Microlens pitch.
+    :return: Lightfield data.
+    """
     input_data = np.expand_dims(raw_input, -1)
     microlens_raw_dimensions = np.array([microlens_pitch, microlens_pitch], dtype=np.int32)
     array_start_offsets = np.array([0, 0], dtype=np.int32)
@@ -304,6 +417,7 @@ def convert_raw_to_lightfield(raw_input, microlens_pitch):
     intermediate_lightfield = np.transpose(intermediate_lightfield, axes=(1, 3, 0, 2))
     ###
 
+    # Convert from micro-image mode to sub-aperture mode
     permutation_order = (2, 3, 0, 1)
-    lightfield = np.transpose(intermediate_lightfield, permutation_order)  # from micro-image mode to sub-aperture mode
+    lightfield = np.transpose(intermediate_lightfield, permutation_order)
     return lightfield
